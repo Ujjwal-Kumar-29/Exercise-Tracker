@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atomic Habits Tracker</title>
+    <style>
+        :root {
+            --primary: #2ecc71; /* Green */
+            --danger: #e74c3c;  /* Red */
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            color: var(--text);
+        }
+
+        .container {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 350px;
+            margin-bottom: 20px;
+        }
+
+        /* Streak Section */
+        h1 { font-size: 1rem; color: #888; margin-bottom: 0; text-transform: uppercase; letter-spacing: 2px; }
+        .streak-number {
+            font-size: 5rem;
+            font-weight: 800;
+            color: var(--primary);
+            margin: 10px 0;
+            line-height: 1;
+        }
+        .streak-label { font-size: 1.2rem; margin-bottom: 1.5rem; color: #666; }
+
+        button {
+            background-color: #333;
+            color: white;
+            border: none;
+            padding: 15px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.1s ease, background-color 0.2s;
+        }
+        button:active { transform: scale(0.98); }
+        button:disabled { background-color: var(--primary); cursor: default; }
+
+        /* Calendar Section */
+        .calendar-header {
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-align: left;
+            font-size: 1.2rem;
+        }
+        
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+        }
+
+        .day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background-color: #f8f9fa;
+            color: #aaa;
+            border: 1px solid #eee;
+        }
+
+        /* Status Classes */
+        .day.success { background-color: var(--primary); color: white; border-color: var(--primary); }
+        .day.missed { background-color: var(--danger); color: white; border-color: var(--danger); }
+        .day.today { border: 2px solid #333; color: #333; font-weight: bold; }
+        .day.empty { background: transparent; border: none; }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Current Streak</h1>
+        <div id="streakDisplay" class="streak-number">0</div>
+        <div class="streak-label">DAYS</div>
+
+        <button id="checkInBtn" onclick="logWorkout()">I DID IT TODAY</button>
+        <p id="message" style="margin-top: 15px; color: #888; font-size: 0.9rem;">Don't break the chain.</p>
+    </div>
+
+    <div class="container">
+        <div class="calendar-header" id="monthName">Month</div>
+        <div class="calendar-grid" id="calendarGrid">
+            </div>
+    </div>
+
+<script>
+    // --- DATA MANAGEMENT ---
+    const STORAGE_KEY = 'habit_logs'; 
+    // Data structure: { "2023-10-27": "success", "2023-10-26": "missed" }
+    let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    
+    // Config
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0-11
+    
+    // --- DOM ELEMENTS ---
+    const btn = document.getElementById('checkInBtn');
+    const streakDisplay = document.getElementById('streakDisplay');
+    const msg = document.getElementById('message');
+    const grid = document.getElementById('calendarGrid');
+
+    // --- CORE LOGIC ---
+
+    function getFormattedDate(dateObj) {
+        // Returns "YYYY-MM-DD" local time
+        const offset = dateObj.getTimezoneOffset();
+        const localDate = new Date(dateObj.getTime() - (offset*60*1000));
+        return localDate.toISOString().split('T')[0];
+    }
+
+    function calculateStreak() {
+        let streak = 0;
+        const d = new Date(); // start checking from today
+        
+        // Check backwards
+        while (true) {
+            const dateStr = getFormattedDate(d);
+            if (logs[dateStr] === 'success') {
+                streak++;
+                d.setDate(d.getDate() - 1); // go back 1 day
+            } else if (dateStr === getFormattedDate(today) && !logs[dateStr]) {
+                // If today isn't logged yet, don't break streak, just ignore and check yesterday
+                d.setDate(d.getDate() - 1);
+            } else {
+                break; // streak broken
+            }
+        }
+        streakDisplay.innerText = streak;
+    }
+
+    function renderCalendar() {
+        grid.innerHTML = ''; // clear grid
+        
+        // Month Header
+        const monthNames = ["January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"];
+        document.getElementById('monthName').innerText = `${monthNames[currentMonth]} ${currentYear}`;
+
+        // Days in month
+        const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0 = Sun
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+        // 1. Empty slots for days before the 1st
+        for (let i = 0; i < firstDay; i++) {
+            const div = document.createElement('div');
+            div.className = 'day empty';
+            grid.appendChild(div);
+        }
+
+        // 2. Actual Days
+        for (let day = 1; day <= daysInMonth; day++) {
+            const div = document.createElement('div');
+            div.className = 'day';
+            div.innerText = day;
+            
+            // Construct date key for this specific day
+            const dateObj = new Date(currentYear, currentMonth, day);
+            const dateStr = getFormattedDate(dateObj);
+            const todayStr = getFormattedDate(today);
+
+            // Add classes based on status
+            if (dateStr === todayStr) div.classList.add('today');
+            
+            if (logs[dateStr] === 'success') {
+                div.classList.add('success');
+            } else if (dateObj < today && !logs[dateStr]) {
+                // If in the past and no log, mark as missed (optional visually)
+                // div.classList.add('missed'); // Uncomment if you want red dots for past missed days
+            }
+
+            grid.appendChild(div);
+        }
+    }
+
+    function logWorkout() {
+        const dateStr = getFormattedDate(today);
+        logs[dateStr] = 'success';
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+        
+        // Update UI
+        btn.disabled = true;
+        btn.innerText = "COMPLETED ✅";
+        msg.innerText = "Great job! See you tomorrow.";
+        
+        calculateStreak();
+        renderCalendar();
+    }
+
+    function init() {
+        const dateStr = getFormattedDate(today);
+        
+        // Check if already done today
+        if (logs[dateStr] === 'success') {
+            btn.disabled = true;
+            btn.innerText = "COMPLETED ✅";
+            msg.innerText = "Come back tomorrow!";
+        }
+
+        calculateStreak();
+        renderCalendar();
+    }
+
+    // Start
+    init();
+
+</script>
+</body>
+</html>
