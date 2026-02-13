@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atomic Habits Tracker</title>
+    <title>My Habit Tracker</title>
     <style>
         :root {
-            --primary: #2ecc71; /* Green */
-            --danger: #e74c3c;  /* Red */
+            --primary: #2ecc71;
             --bg: #f0f2f5;
             --card: #ffffff;
             --text: #333;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg);
             display: flex;
             flex-direction: column;
@@ -23,217 +22,182 @@
             margin: 0;
             padding: 20px;
             color: var(--text);
+            overflow-x: hidden;
         }
 
         .container {
             background: var(--card);
             padding: 2rem;
             border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
             text-align: center;
             width: 100%;
             max-width: 350px;
             margin-bottom: 20px;
+            position: relative;
+            z-index: 10;
         }
 
-        /* Streak Section */
-        h1 { font-size: 1rem; color: #888; margin-bottom: 0; text-transform: uppercase; letter-spacing: 2px; }
+        h1 { font-size: 0.9rem; color: #888; text-transform: uppercase; letter-spacing: 2px; margin: 0; }
+        
         .streak-number {
             font-size: 5rem;
             font-weight: 800;
             color: var(--primary);
-            margin: 10px 0;
+            margin: 5px 0;
             line-height: 1;
         }
-        .streak-label { font-size: 1.2rem; margin-bottom: 1.5rem; color: #666; }
 
         button {
-            background-color: #333;
+            background-color: #222;
             color: white;
             border: none;
-            padding: 15px;
+            padding: 16px;
             font-size: 1.1rem;
             font-weight: bold;
             border-radius: 12px;
             cursor: pointer;
             width: 100%;
-            transition: transform 0.1s ease, background-color 0.2s;
+            transition: transform 0.1s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        button:active { transform: scale(0.98); }
-        button:disabled { background-color: var(--primary); cursor: default; }
+        button:active { transform: scale(0.96); }
+        button:disabled { background-color: var(--primary); cursor: default; transform: none; }
 
-        /* Calendar Section */
-        .calendar-header {
-            font-weight: bold;
-            margin-bottom: 15px;
-            text-align: left;
-            font-size: 1.2rem;
-        }
-        
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 5px;
-        }
-
+        /* Calendar Styles */
+        .calendar-header { font-weight: bold; margin-bottom: 15px; text-align: left; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
         .day {
             aspect-ratio: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            background-color: #f8f9fa;
-            color: #aaa;
-            border: 1px solid #eee;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 6px; font-size: 0.8rem;
+            background-color: #f8f9fa; color: #ccc;
         }
-
-        /* Status Classes */
-        .day.success { background-color: var(--primary); color: white; border-color: var(--primary); }
-        .day.missed { background-color: var(--danger); color: white; border-color: var(--danger); }
+        .day.success { background-color: var(--primary); color: white; }
         .day.today { border: 2px solid #333; color: #333; font-weight: bold; }
-        .day.empty { background: transparent; border: none; }
-
+        
+        /* Canvas for Confetti */
+        #confetti-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 999;
+        }
     </style>
 </head>
 <body>
 
+    <canvas id="confetti-canvas"></canvas>
+
     <div class="container">
         <h1>Current Streak</h1>
         <div id="streakDisplay" class="streak-number">0</div>
-        <div class="streak-label">DAYS</div>
-
         <button id="checkInBtn" onclick="logWorkout()">I DID IT TODAY</button>
-        <p id="message" style="margin-top: 15px; color: #888; font-size: 0.9rem;">Don't break the chain.</p>
+        <p id="message" style="margin-top: 15px; color: #888; font-size: 0.9rem;">Keep the chain alive.</p>
     </div>
 
     <div class="container">
         <div class="calendar-header" id="monthName">Month</div>
-        <div class="calendar-grid" id="calendarGrid">
-            </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
     </div>
 
 <script>
-    // --- DATA MANAGEMENT ---
-    const STORAGE_KEY = 'habit_logs'; 
-    // Data structure: { "2023-10-27": "success", "2023-10-26": "missed" }
-    let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    
-    // Config
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const currentMonth = today.getMonth(); // 0-11
-    
-    // --- DOM ELEMENTS ---
-    const btn = document.getElementById('checkInBtn');
-    const streakDisplay = document.getElementById('streakDisplay');
-    const msg = document.getElementById('message');
-    const grid = document.getElementById('calendarGrid');
+    // --- CONFETTI ENGINE ---
+    const canvas = document.getElementById('confetti-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    let particles = [];
 
-    // --- CORE LOGIC ---
-
-    function getFormattedDate(dateObj) {
-        // Returns "YYYY-MM-DD" local time
-        const offset = dateObj.getTimezoneOffset();
-        const localDate = new Date(dateObj.getTime() - (offset*60*1000));
-        return localDate.toISOString().split('T')[0];
+    function fireConfetti() {
+        const colors = ['#2ecc71', '#3498db', '#e74c3c', '#f1c40f', '#9b59b6'];
+        for (let i = 0; i < 100; i++) {
+            particles.push({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+                r: Math.random() * 6 + 2,
+                dx: Math.random() * 10 - 5,
+                dy: Math.random() * 10 - 5,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                life: 100
+            });
+        }
+        animateConfetti();
     }
 
-    function calculateStreak() {
+    function animateConfetti() {
+        if (particles.length === 0) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        particles.forEach((p, index) => {
+            p.x += p.dx;
+            p.y += p.dy;
+            p.dy += 0.2; // gravity
+            p.life--;
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            if (p.life <= 0) particles.splice(index, 1);
+        });
+        requestAnimationFrame(animateConfetti);
+    }
+
+    // --- TRACKER LOGIC ---
+    const STORAGE_KEY = 'habit_logs'; 
+    let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const today = new Date();
+    
+    function getFormattedDate(date) {
+        const offset = date.getTimezoneOffset();
+        return new Date(date.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+    }
+
+    function render() {
+        // Streak Calculation
         let streak = 0;
-        const d = new Date(); // start checking from today
-        
-        // Check backwards
+        let d = new Date();
         while (true) {
             const dateStr = getFormattedDate(d);
-            if (logs[dateStr] === 'success') {
-                streak++;
-                d.setDate(d.getDate() - 1); // go back 1 day
-            } else if (dateStr === getFormattedDate(today) && !logs[dateStr]) {
-                // If today isn't logged yet, don't break streak, just ignore and check yesterday
-                d.setDate(d.getDate() - 1);
-            } else {
-                break; // streak broken
-            }
+            if (logs[dateStr] === 'success') { streak++; d.setDate(d.getDate() - 1); }
+            else if (dateStr === getFormattedDate(today) && !logs[dateStr]) { d.setDate(d.getDate() - 1); }
+            else break;
         }
-        streakDisplay.innerText = streak;
-    }
+        document.getElementById('streakDisplay').innerText = streak;
 
-    function renderCalendar() {
-        grid.innerHTML = ''; // clear grid
+        // Button State
+        if (logs[getFormattedDate(today)] === 'success') {
+            document.getElementById('checkInBtn').innerText = "COMPLETED ✅";
+            document.getElementById('checkInBtn').disabled = true;
+        }
+
+        // Calendar Render
+        const grid = document.getElementById('calendarGrid');
+        grid.innerHTML = '';
+        const year = today.getFullYear(), month = today.getMonth();
+        document.getElementById('monthName').innerText = today.toLocaleString('default', { month: 'long', year: 'numeric' });
         
-        // Month Header
-        const monthNames = ["January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"];
-        document.getElementById('monthName').innerText = `${monthNames[currentMonth]} ${currentYear}`;
+        const firstDay = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-        // Days in month
-        const firstDay = new Date(currentYear, currentMonth, 1).getDay(); // 0 = Sun
-        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-
-        // 1. Empty slots for days before the 1st
-        for (let i = 0; i < firstDay; i++) {
-            const div = document.createElement('div');
-            div.className = 'day empty';
-            grid.appendChild(div);
-        }
-
-        // 2. Actual Days
+        for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement('div')); // spacers
+        
         for (let day = 1; day <= daysInMonth; day++) {
             const div = document.createElement('div');
             div.className = 'day';
             div.innerText = day;
-            
-            // Construct date key for this specific day
-            const dateObj = new Date(currentYear, currentMonth, day);
-            const dateStr = getFormattedDate(dateObj);
-            const todayStr = getFormattedDate(today);
-
-            // Add classes based on status
-            if (dateStr === todayStr) div.classList.add('today');
-            
-            if (logs[dateStr] === 'success') {
-                div.classList.add('success');
-            } else if (dateObj < today && !logs[dateStr]) {
-                // If in the past and no log, mark as missed (optional visually)
-                // div.classList.add('missed'); // Uncomment if you want red dots for past missed days
-            }
-
+            const dateStr = getFormattedDate(new Date(year, month, day));
+            if (dateStr === getFormattedDate(today)) div.classList.add('today');
+            if (logs[dateStr] === 'success') div.classList.add('success');
             grid.appendChild(div);
         }
     }
 
     function logWorkout() {
-        const dateStr = getFormattedDate(today);
-        logs[dateStr] = 'success';
+        logs[getFormattedDate(today)] = 'success';
         localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-        
-        // Update UI
-        btn.disabled = true;
-        btn.innerText = "COMPLETED ✅";
-        msg.innerText = "Great job! See you tomorrow.";
-        
-        calculateStreak();
-        renderCalendar();
+        render();
+        fireConfetti(); // Trigger the confetti!
     }
 
-    function init() {
-        const dateStr = getFormattedDate(today);
-        
-        // Check if already done today
-        if (logs[dateStr] === 'success') {
-            btn.disabled = true;
-            btn.innerText = "COMPLETED ✅";
-            msg.innerText = "Come back tomorrow!";
-        }
-
-        calculateStreak();
-        renderCalendar();
-    }
-
-    // Start
-    init();
-
+    render(); // Initial Load
 </script>
 </body>
 </html>
